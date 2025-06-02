@@ -25,6 +25,19 @@ class PositionalEmbedding(nn.Module):
         return self.pos_embedding[:, :seq_len, :]
 
 
+class InputEmbedding(nn.Module):
+    def __init__(self, vocab_size, d_model, dropout=0.1):
+        super().__init__()
+        self.token = TokenEmbedding(vocab_size, d_model)
+        self.position = PositionalEmbedding(d_model=d_model)
+        self.dropout = nn.Dropout(p=dropout)
+
+    def forward(self, x):
+        token_emb = self.token(x)
+        pos_emb = self.position(x)
+        return self.dropout(token_emb + pos_emb)
+
+
 class Attention(nn.Module):
     def __init__(self, dropout=0.1):
         super().__init__()
@@ -132,9 +145,7 @@ class DecoderBlock(nn.Module):
 class GPT(nn.Module):
     def __init__(self, vocab_size, d_model, n_layers, heads, d_ff, max_len=512, dropout=0.1):
         super().__init__()
-        self.token = TokenEmbedding(vocab_size, d_model)
-        self.position = PositionalEmbedding(d_model=d_model)
-        self.dropout = nn.Dropout(p=dropout)
+        self.inputEmbedding = InputEmbedding(vocab_size, d_model, dropout)
 
         self.blocks = nn.ModuleList([
             DecoderBlock(d_model, heads, d_ff, dropout) for _ in range(n_layers)
@@ -142,7 +153,7 @@ class GPT(nn.Module):
         self.ln_f = LayerNorm(d_model)
         self.head = nn.Linear(d_model, vocab_size, bias=False)
 
-        self.head.weight = self.token.embedding.weight
+        self.head.weight = self.inputEmbedding.token.embedding.weight
 
         self.max_len = max_len
 
@@ -158,9 +169,7 @@ class GPT(nn.Module):
         mask = self.generate_square_subsequent_mask(seq_len).to(x.device)
         mask = mask.unsqueeze(0).unsqueeze(0)
 
-        token_emb = self.token(x)
-        pos_emb = self.position(x)
-        x = self.dropout(token_emb + pos_emb)
+        x = self.inputEmbedding(x)
 
         for block in self.blocks:
             x = block(x, mask)
